@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "perf.h"
 
 struct cpu cpus[NCPU];
 
@@ -119,6 +120,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->mask = 0;
+  p->trace_flag = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -140,6 +143,14 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+
+  // Set up time variables
+  p->stime = 0;
+  p->retime = 0;
+  p->rutime = 0;
+  p->ttime = 0;
+  p->ctime = ticks;
+
 
   return p;
 }
@@ -267,6 +278,16 @@ growproc(int n)
   return 0;
 }
 
+// Trace proccess with Process ID: pid system calls
+// System calls numbers defined in mask
+void
+trace(int mask, int pid){
+  struct proc *p = &proc[pid-1];
+  p->mask = mask;
+  p->trace_flag = 1;
+}
+
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -276,6 +297,7 @@ fork(void)
   struct proc *np;
   struct proc *p = myproc();
 
+  
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -288,6 +310,8 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+  np->mask = p->mask; // Copy mask from parent to child
+  // np->trace_flag = p->trace_flag;  CHECK IF NEED TO COPY TRACE FLAG
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -313,6 +337,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->runnableTime = ticks;
   release(&np->lock);
 
   return pid;
@@ -427,6 +452,55 @@ wait(uint64 addr)
   }
 }
 
+// Wait for a child process to exit and return its pid.
+// Return -1 if this process has no children.
+int
+wait_stat(int* status, struct perf * performance){
+  struct proc *np;
+  int havekids, pid;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&np->lock);
+
+        havekids = 1;
+        if(np->state == ZOMBIE){
+          // Found one.
+          pid = np->pid;
+          performance->retime = p->retime;
+          performance->rutime = p->rutime;
+          performance->stime = p->stime;
+          performance->ttime = p->ttime;
+          performance->ctime = p->ctime;
+          freeproc(np);
+          release(&np->lock);
+          release(&wait_lock);
+          return pid;
+        }
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+    
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -452,6 +526,8 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        p->runningTime = ticks;
+        p->retime += (ticks - p->runnableTime);
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -498,6 +574,8 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->rutime += (ticks - p->runningTime);
+  p->runnableTime = ticks;
   sched();
   release(&p->lock);
 }
@@ -542,7 +620,9 @@ sleep(void *chan, struct spinlock *lk)
 
   // Go to sleep.
   p->chan = chan;
+  p->rutime += (ticks - p->runningTime);
   p->state = SLEEPING;
+  p->sleepTime = ticks;
 
   sched();
 
@@ -566,6 +646,8 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        p->stime += (ticks - p->sleepTime);
+        p->runnableTime = ticks;
       }
       release(&p->lock);
     }
@@ -587,6 +669,8 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        p->stime += (ticks - p->sleepTime);
+        p->runnableTime = ticks;
       }
       release(&p->lock);
       return 0;

@@ -3,6 +3,11 @@
 #include "kernel/types.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
+#include "kernel/stat.h"
+
+
+// path file
+#define PATH "/path"
 
 // Parsed command representation
 #define EXEC  1
@@ -52,6 +57,10 @@ struct backcmd {
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
+int checkIfFileExist(const char *path);
+int getFileSize(char* path);
+void initPath();
+char * stringCaten(char *dest, const char *src);
 
 // Execute cmd.  Never returns.
 void
@@ -67,6 +76,8 @@ runcmd(struct cmd *cmd)
   if(cmd == 0)
     exit(1);
 
+  initPath(); // init path variable
+
   switch(cmd->type){
   default:
     panic("runcmd");
@@ -75,7 +86,28 @@ runcmd(struct cmd *cmd)
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       exit(1);
-    exec(ecmd->argv[0], ecmd->argv);
+
+    if (checkIfFileExist(ecmd->argv[0])){
+        exec(ecmd->argv[0], ecmd->argv);
+    }else{
+        int fileSize = getFileSize(PATH);
+        int fd = open(PATH, O_CREATE |  O_RDWR);
+        char *buffer = malloc(fileSize);
+        read(fd, buffer, fileSize);
+        close(fd);
+
+        char *start = buffer, *end, *path;
+        while ((end = strchr(start, ':')) != 0) {
+            int pathLength = end - start;
+            path = malloc(strlen(ecmd->argv[0]) + pathLength);
+            memcpy(path, start, pathLength);
+            stringCaten(path, ecmd->argv[0]);
+            if(checkIfFileExist(path)) {
+                exec(path, ecmd->argv);
+            }
+            start = end + 1;
+        }
+    }
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
 
@@ -490,4 +522,46 @@ nulterminate(struct cmd *cmd)
     break;
   }
   return cmd;
+}
+
+// check if filename exists in the current directory
+int checkIfFileExist(const char *filename) {
+    struct stat buffer;
+    int exist = stat(filename, &buffer);
+    switch(exist){
+      case -1:
+        return 0;
+      default:
+        return 1;
+    }
+}
+
+// get file size 
+int getFileSize(char* path) {
+    int fd = open(path, O_RDONLY);
+    struct stat st;
+    if (fd < 0) {
+        return -1;
+    }
+    stat(path, &st);
+    return st.size;
+}
+
+// init path variable for root and user directory
+void initPath(){
+  int fd = open(PATH, O_CREATE |  O_RDWR);
+  char* user = "/:/user/:";
+  write(fd, user, strlen(user));
+  close(fd);
+}
+
+// catenate two "strings"
+char * stringCaten(char *dest, const char *src){
+    int i,j;
+    for (i = 0; dest[i] != '\0'; i++)
+        ;
+    for (j = 0; src[j] != '\0'; j++)
+        dest[i+j] = src[j];
+    dest[i+j] = '\0';
+    return dest;
 }

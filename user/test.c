@@ -1,3 +1,7 @@
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+
 // System call numbers
 #define SYS_fork    1
 #define SYS_exit    2
@@ -21,4 +25,10 @@
 #define SYS_mkdir  20
 #define SYS_close  21
 #define SYS_trace  22
-#define SYS_wait_stat 23
+
+
+int main(int argc, char** argv){
+    int mask=(1<< SYS_fork)|( 1<< SYS_kill)| ( 1<< SYS_sbrk) | ( 1<< SYS_write);
+    trace(mask,2);
+    exit(0);
+}
