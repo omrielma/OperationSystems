@@ -280,11 +280,12 @@ growproc(int n)
 
 // Trace proccess with Process ID: pid system calls
 // System calls numbers defined in mask
-void
+int
 trace(int mask, int pid){
   struct proc *p = &proc[pid-1];
   p->mask = mask;
   p->trace_flag = 1;
+  return 0;
 }
 
 
