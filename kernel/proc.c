@@ -317,7 +317,7 @@ fork(void)
   }
   np->sz = p->sz;
   np->mask = p->mask; // Copy mask from parent to child
-  // np->trace_flag = p->trace_flag;  CHECK IF NEED TO COPY TRACE FLAG
+  np->trace_flag = p->trace_flag;  // CHECK IF NEED TO COPY TRACE FLAG
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -606,7 +606,7 @@ DEFAULT_scheduler(struct cpu * c){
 // SRT scheduler
 void
 SRT_scheduler(struct cpu * c){
-  float min = 1000000;
+  int min = 1000000;
   struct proc *minP = 0, *p;
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
