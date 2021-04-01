@@ -76,9 +76,14 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  #ifndef FCFS
+    // give up the CPU if this is a timer interrupt.
+    if(which_dev == 2){
+      // swap out processes every quantum
+      if(ticks % QUANTUM == 0)
+        yield();  
+    }
+  #endif
 
   usertrapret();
 }
@@ -160,9 +165,29 @@ kerneltrap()
 }
 
 void
-clockintr()
-{
+clockintr(){
+  // struct proc *p;
   acquire(&tickslock);
+  // for(p = myproc(); p < &p[NPROC]; p++){
+  //   acquire(&p->lock);
+  //   switch(p->state){
+  //     case RUNNABLE:
+  //       p->retime++;
+  //       break;
+  //     case RUNNING:
+  //       p->rutime++;
+  //       break;
+  //     case SLEEPING:
+  //       p->stime++;
+  //       break;
+  //     case UNUSED | ZOMBIE | USED:
+  //       if (p->ttime==0)
+  //         p->ttime=ticks; 
+  //     default:
+  //       break;
+  //   }
+  //     release(&p->lock);
+  // }
   ticks++;
   wakeup(&ticks);
   release(&tickslock);

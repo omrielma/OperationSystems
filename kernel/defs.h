@@ -108,6 +108,8 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 int             trace(int mask, int pid);
 int             wait_stat(int* status, struct perf * performance);
+void            DEFAULT_scheduler(struct cpu * c);
+void            SRT_scheduler(struct cpu * c);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

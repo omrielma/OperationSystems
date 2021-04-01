@@ -50,6 +50,10 @@ endif
 
 QEMU = qemu-system-riscv64
 
+ifndef SCHEDFLAG
+SCHEDFLAG := DEFAULT
+endif
+
 CC = $(TOOLPREFIX)gcc
 AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
@@ -62,6 +66,7 @@ CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+CFLAGS += -D $(SCHEDFLAG)
 
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
@@ -160,6 +165,7 @@ endif
 QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic
 QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0
 QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+
 
 qemu: $K/kernel fs.img
 	$(QEMU) $(QEMUOPTS)
