@@ -48,7 +48,7 @@ int main(int argc, char** argv){
     if (cpid != 0){
         int ret = wait_stat(stat,perf);
         fprintf(2, "return value: %s %d\n", "wait_stat", ret);
-        fprintf(2,"Sleep: %d Running: %d Runnable: %d Status: %d Creation: %d Termination: %d\n",perf->stime,perf->rutime,perf->retime,*stat, perf->ctime, perf->ttime);
+        fprintf(2,"Sleep: %d Running: %d Runnable: %d Status: %d Creation: %d Termination: %d Burst: %d\n",perf->stime,perf->rutime,perf->retime,*stat, perf->ctime, perf->ttime, perf->average_bursttime);
     } else{
         sleep(20);
         mkdir("a");

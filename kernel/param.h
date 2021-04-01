@@ -13,3 +13,8 @@
 #define MAXPATH      128   // maximum file path name
 #define QUANTUM      5     // 5 clock ticks
 #define ALPHA        50
+#define TEST_HIGH_PRIORITY 1
+#define HIGH_PRIORITY 3
+#define NORMAL_PRIORITY 5
+#define LOW_PRIORITY 7
+#define TEST_LOW_PRIORITY 25
