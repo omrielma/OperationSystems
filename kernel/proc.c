@@ -151,6 +151,10 @@ found:
   p->ttime = 0;
   p->ctime = ticks;
 
+  // Set up process priority
+  p->priority = 3;
+  p->decayfactor = NORMAL_PRIORITY;
+
 
   return p;
 }
@@ -340,6 +344,8 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   np->runnableTime = ticks;
+  np->priority = p->priority;
+  np->decayfactor = p->decayfactor;
   // np->average_bursttime = QUANTUM*100; // NOT SURE
   release(&np->lock);
 
@@ -515,6 +521,33 @@ wait_stat(int* status, struct perf * performance){
 }
 
 
+int
+set_priority(int priority){
+  if(priority < 1 || priority > 5) 
+    return -1;
+  struct proc *p = myproc();
+  p->priority = priority;
+  switch(priority){
+    case 1:
+      p->decayfactor = TEST_HIGH_PRIORITY;
+      break;
+    case 2:
+      p->decayfactor = HIGH_PRIORITY;
+      break;
+    case 3:
+      p->decayfactor = NORMAL_PRIORITY;
+      break;
+    case 4:
+      p->decayfactor = LOW_PRIORITY;
+      break;
+    case 5:
+      p->decayfactor = TEST_LOW_PRIORITY;
+      break;
+  }
+  return 0;
+}
+
+
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -539,6 +572,8 @@ scheduler(void)
       DEFAULT_scheduler(c); 
     #elif SRT
       SRT_scheduler(c);
+    #elif CFSD
+      CFSD_scheduler(c);
     #endif
   }
 }
@@ -598,6 +633,37 @@ SRT_scheduler(struct cpu * c){
   }
 }
 
+// CFSD scheduler
+void
+CFSD_scheduler(struct cpu *c){
+  struct proc *p, *minP = 0;
+  int runtimeratio, min = 1000000;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    runtimeratio = (p->rutime * p->decayfactor) / (p->rutime + p->stime);
+    if(runtimeratio < min && p->state == RUNNABLE){
+      min = runtimeratio;
+      minP = p;
+    }
+    release(&p->lock);
+  }
+  if(minP != 0){
+    p = minP;
+    acquire(&p->lock);
+    if(p->state == RUNNABLE){
+      p->state = RUNNING;
+      p->runningTime = ticks;
+      p->retime += (ticks - p->runnableTime);
+      c->proc = p;
+      swtch(&c->context, &p->context);
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&p->lock);
+  }
+}
+
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -634,9 +700,7 @@ yield(void)
   p->state = RUNNABLE;
   p->rutime += (ticks - p->runningTime);
   p->runnableTime = ticks;
-  #ifdef SRT
-    p->average_bursttime = ALPHA*p->runningTime + ((100-ALPHA)*p->average_bursttime)/100;
-  #endif
+  p->average_bursttime = ALPHA*p->runningTime + ((100-ALPHA)*p->average_bursttime)/100;
   sched();
   release(&p->lock);
 }

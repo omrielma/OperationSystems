@@ -4,5 +4,5 @@ struct perf {
     int stime;
     int retime;
     int rutime;
-    float average_bursttime;
+    int average_bursttime;
 };
