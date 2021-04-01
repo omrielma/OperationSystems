@@ -72,18 +72,6 @@ argaddr(int n, uint64 *ip)
 }
 
 
-int
-argptr(int n, char **pp, int size)
-{
-  int i;
-  struct proc *curproc = myproc();
- 
-  if(argint(n, &i) < 0)
-    return -1;
-  if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
-    return -1;
-  return fetchstr(i, *pp, size);
-}
 
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.

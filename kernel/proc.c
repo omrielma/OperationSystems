@@ -254,6 +254,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  p->runnableTime = ticks;
 
   release(&p->lock);
 }
@@ -339,6 +340,7 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   np->runnableTime = ticks;
+  // np->average_bursttime = QUANTUM*100; // NOT SURE
   release(&np->lock);
 
   return pid;
@@ -396,6 +398,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+  p->ttime = ticks;
 
   release(&wait_lock);
 
@@ -455,14 +458,16 @@ wait(uint64 addr)
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
+// Also fill in the perf struct with data from the kernel
 int
 wait_stat(int* status, struct perf * performance){
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
-
+  struct perf* updatePerf = (struct perf *)kalloc();
+  
   acquire(&wait_lock);
-
+ 
   for(;;){
     // Scan through table looking for exited children.
     havekids = 0;
@@ -470,16 +475,25 @@ wait_stat(int* status, struct perf * performance){
       if(np->parent == p){
         // make sure the child isn't still in exit() or swtch().
         acquire(&np->lock);
-
+        
         havekids = 1;
         if(np->state == ZOMBIE){
           // Found one.
           pid = np->pid;
-          performance->retime = p->retime;
-          performance->rutime = p->rutime;
-          performance->stime = p->stime;
-          performance->ttime = p->ttime;
-          performance->ctime = p->ctime;
+          updatePerf->retime = np->retime;
+          updatePerf->rutime = np->rutime;
+          updatePerf->stime = np->stime;
+          updatePerf->ttime = np->ttime;
+          updatePerf->ctime = np->ctime;
+          
+          int dupPerf = copyout(p->pagetable,(uint64)performance,(char *)updatePerf ,sizeof(struct perf));
+          int dupStatus = copyout(p->pagetable, (uint64)status, (char *)&np->xstate, sizeof(np->xstate));
+          
+          if((uint64)status != 0  && (dupPerf<0 || dupStatus<0)){
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
           freeproc(np);
           release(&np->lock);
           release(&wait_lock);
@@ -512,15 +526,29 @@ wait_stat(int* status, struct perf * performance){
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
   
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
+    
+    #ifdef DEFAULT
+      DEFAULT_scheduler(c);
+    #elif FCFS
+      DEFAULT_scheduler(c); 
+    #elif SRT
+      SRT_scheduler(c);
+    #endif
+  }
+}
 
-    for(p = proc; p < &proc[NPROC]; p++) {
+// DEFAULT and FCFS scheduler
+// same as original scheduler
+void
+DEFAULT_scheduler(struct cpu * c){
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
@@ -538,6 +566,35 @@ scheduler(void)
       }
       release(&p->lock);
     }
+}
+
+// SRT scheduler
+void
+SRT_scheduler(struct cpu * c){
+  float min = 1000000;
+  struct proc *minP = 0, *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->average_bursttime < min && p->state == RUNNABLE){
+      min = p->average_bursttime;
+      minP = p;
+    }
+    release(&p->lock);
+  }
+  if(minP != 0){
+    p = minP;
+    acquire(&p->lock);
+    if(p->state == RUNNABLE){
+      p->state = RUNNING;
+      p->runningTime = ticks;
+      p->retime += (ticks - p->runnableTime);
+      c->proc = p;
+      swtch(&c->context, &p->context);
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&p->lock);
   }
 }
 
@@ -577,6 +634,9 @@ yield(void)
   p->state = RUNNABLE;
   p->rutime += (ticks - p->runningTime);
   p->runnableTime = ticks;
+  #ifdef SRT
+    p->average_bursttime = ALPHA*p->runningTime + ((100-ALPHA)*p->average_bursttime)/100;
+  #endif
   sched();
   release(&p->lock);
 }
