@@ -8,6 +8,8 @@
 
 struct spinlock tickslock;
 uint ticks;
+int quantumCount = 0;
+
 
 extern char trampoline[], uservec[], userret[];
 
@@ -79,9 +81,12 @@ usertrap(void)
   #ifndef FCFS
     // give up the CPU if this is a timer interrupt.
     if(which_dev == 2){
+      quantumCount++;
       // swap out processes every quantum
-      if(ticks % QUANTUM == 0)
-        yield();  
+      if(quantumCount == QUANTUM){
+        quantumCount = 0;
+        yield();
+      } 
     }
   #endif
 
@@ -166,28 +171,7 @@ kerneltrap()
 
 void
 clockintr(){
-  // struct proc *p;
   acquire(&tickslock);
-  // for(p = myproc(); p < &p[NPROC]; p++){
-  //   acquire(&p->lock);
-  //   switch(p->state){
-  //     case RUNNABLE:
-  //       p->retime++;
-  //       break;
-  //     case RUNNING:
-  //       p->rutime++;
-  //       break;
-  //     case SLEEPING:
-  //       p->stime++;
-  //       break;
-  //     case UNUSED | ZOMBIE | USED:
-  //       if (p->ttime==0)
-  //         p->ttime=ticks; 
-  //     default:
-  //       break;
-  //   }
-  //     release(&p->lock);
-  // }
   ticks++;
   wakeup(&ticks);
   release(&tickslock);

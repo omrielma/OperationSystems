@@ -15,6 +15,8 @@ struct proc *initproc;
 
 int nextpid = 1;
 struct spinlock pid_lock;
+struct spinlock queuelock;
+int queue_number_global = 1;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -51,6 +53,7 @@ procinit(void)
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+  initlock(&queuelock, "queue");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
@@ -122,6 +125,7 @@ found:
   p->state = USED;
   p->mask = 0;
   p->trace_flag = 0;
+  p->queue_number = -1;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -149,6 +153,7 @@ found:
   p->retime = 0;
   p->rutime = 0;
   p->ttime = 0;
+  p->average_bursttime = QUANTUM * 100;
   p->ctime = ticks;
 
   // Set up process priority
@@ -257,8 +262,15 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
+  
   p->state = RUNNABLE;
   p->runnableTime = ticks;
+
+  acquire(&queuelock);
+  p->queue_number = queue_number_global;
+  queue_number_global++;
+  release(&queuelock);
+
 
   release(&p->lock);
 }
@@ -316,6 +328,7 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+  // trace
   np->mask = p->mask; // Copy mask from parent to child
   np->trace_flag = p->trace_flag;  // CHECK IF NEED TO COPY TRACE FLAG
 
@@ -344,9 +357,15 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   np->runnableTime = ticks;
+
+  acquire(&queuelock);
+  np->queue_number = queue_number_global;
+  queue_number_global++;
+  release(&queuelock);
+
   np->priority = p->priority;
   np->decayfactor = p->decayfactor;
-  // np->average_bursttime = QUANTUM*100; // NOT SURE
+  np->average_bursttime = QUANTUM*100; 
   release(&np->lock);
 
   return pid;
@@ -405,6 +424,7 @@ exit(int status)
   p->xstate = status;
   p->state = ZOMBIE;
   p->ttime = ticks;
+  // p->average_bursttime = ALPHA*(ticks - p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
 
   release(&wait_lock);
 
@@ -491,6 +511,7 @@ wait_stat(int* status, struct perf * performance){
           updatePerf->stime = np->stime;
           updatePerf->ttime = np->ttime;
           updatePerf->ctime = np->ctime;
+          updatePerf->average_bursttime = np->average_bursttime;
           
           int dupPerf = copyout(p->pagetable,(uint64)performance,(char *)updatePerf ,sizeof(struct perf));
           int dupStatus = copyout(p->pagetable, (uint64)status, (char *)&np->xstate, sizeof(np->xstate));
@@ -569,7 +590,7 @@ scheduler(void)
     #ifdef DEFAULT
       DEFAULT_scheduler(c);
     #elif FCFS
-      DEFAULT_scheduler(c); 
+      FCFS_scheduler(c); 
     #elif SRT
       SRT_scheduler(c);
     #elif CFSD
@@ -578,8 +599,7 @@ scheduler(void)
   }
 }
 
-// DEFAULT and FCFS scheduler
-// same as original scheduler
+// DEFAULT scheduler
 void
 DEFAULT_scheduler(struct cpu * c){
   struct proc *p;
@@ -603,10 +623,40 @@ DEFAULT_scheduler(struct cpu * c){
     }
 }
 
+// FCFS scheduler
+void
+FCFS_scheduler(struct cpu * c){
+  int min = 1000000;
+  struct proc *minP = 0, *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->queue_number < min && p->queue_number != -1 && p->state == RUNNABLE){
+      min = p->queue_number;
+      minP = p;
+    }
+    release(&p->lock);
+  }
+  if(minP != 0){
+    p = minP;
+    acquire(&p->lock);
+    if(p->state == RUNNABLE){
+      p->state = RUNNING;
+      p->runningTime = ticks;
+      p->retime += (ticks - p->runnableTime);
+      c->proc = p;
+      swtch(&c->context, &p->context);
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&p->lock);
+  }
+}
+
 // SRT scheduler
 void
 SRT_scheduler(struct cpu * c){
-  int min = 1000000;
+  int min = __INT_MAX__;
   struct proc *minP = 0, *p;
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
@@ -637,7 +687,7 @@ SRT_scheduler(struct cpu * c){
 void
 CFSD_scheduler(struct cpu *c){
   struct proc *p, *minP = 0;
-  int runtimeratio, min = 1000000;
+  int runtimeratio, min = __INT_MAX__;
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     runtimeratio = (p->rutime * p->decayfactor) / (p->rutime + p->stime);
@@ -685,7 +735,9 @@ sched(void)
     panic("sched running");
   if(intr_get())
     panic("sched interruptible");
+  
 
+  p->average_bursttime = ALPHA*(ticks-p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
   intena = mycpu()->intena;
   swtch(&p->context, &mycpu()->context);
   mycpu()->intena = intena;
@@ -700,7 +752,12 @@ yield(void)
   p->state = RUNNABLE;
   p->rutime += (ticks - p->runningTime);
   p->runnableTime = ticks;
-  p->average_bursttime = ALPHA*p->runningTime + ((100-ALPHA)*p->average_bursttime)/100;
+
+  acquire(&queuelock);
+  p->queue_number = queue_number_global;
+  queue_number_global++;
+  release(&queuelock);
+  // p->average_bursttime = ALPHA*(ticks - p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
   sched();
   release(&p->lock);
 }
@@ -748,6 +805,7 @@ sleep(void *chan, struct spinlock *lk)
   p->rutime += (ticks - p->runningTime);
   p->state = SLEEPING;
   p->sleepTime = ticks;
+  // p->average_bursttime = ALPHA*(ticks - p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
 
   sched();
 
@@ -773,6 +831,10 @@ wakeup(void *chan)
         p->state = RUNNABLE;
         p->stime += (ticks - p->sleepTime);
         p->runnableTime = ticks;
+        acquire(&queuelock);
+        p->queue_number = queue_number_global;
+        queue_number_global++;
+        release(&queuelock);
       }
       release(&p->lock);
     }
@@ -796,6 +858,10 @@ kill(int pid)
         p->state = RUNNABLE;
         p->stime += (ticks - p->sleepTime);
         p->runnableTime = ticks;
+        acquire(&queuelock);
+        p->queue_number = queue_number_global;
+        queue_number_global++;
+        release(&queuelock);
       }
       release(&p->lock);
       return 0;
