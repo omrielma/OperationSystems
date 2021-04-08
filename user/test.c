@@ -52,61 +52,62 @@ int main(int argc, char** argv){
     //       sleep(1);
     //     }
     // }
-
-    // int mask=(1<< SYS_fork)|( 1<< SYS_kill)| ( 1<< SYS_sbrk) | ( 1<< SYS_write);
-    // trace(mask,2);
+    
 
 
-    // int cpid=fork();
-    // int *stat = (int*)malloc(sizeof(int));
-    // struct perf* perf = (struct perf*)malloc(sizeof(perf));
-    // if (cpid != 0){
-    //     int ret = wait_stat(stat,perf);
-    //     fprintf(2, "return value: %s %d\n", "wait_stat", ret);
-    //     fprintf(2,"Sleep: %d Running: %d Runnable: %d Status: %d Creation: %d Termination: %d Burst: %d\n",perf->stime,perf->rutime,perf->retime,*stat, perf->ctime, perf->ttime, perf->average_bursttime);
-    // } else{
-    //     sleep(20);
-    //     mkdir("a");
-    //     mkdir("b");
-    //     mkdir("c");
-    //     mkdir("d");
-    //     mkdir("e");
-    //     mkdir("f");
-    //     sleep(10);
-    // }
-    // exit(0);
-
-    int mask = 1<<6 | 1 <<16; //trace kill and write
-    trace(mask, getpid());
-    int pid = fork();
-    int status;
-    if (pid > 0){ //parent
-        wait(&status);
-        int pid2 = fork();
-        if (pid2 == 0){ //child2
-            trace(1<<6, getpid()); //trace kill
-            int pid4 = fork();
-            wait(&status);
-            if (pid4 >0){ //child 2
-                kill(pid4); //should be traced
-                write(1, "child2\n", 7);  //shouldnt be traced
-            }
+    int cpid=fork();
+    int *stat = (int*)malloc(sizeof(int));
+    struct perf* perf = (struct perf*)malloc(sizeof(perf));
+    if (cpid != 0){
+        int ret = wait_stat(stat,perf);
+        fprintf(2, "return value: %s %d\n", "wait_stat", ret);
+        fprintf(2,"Sleep: %d Running: %d Runnable: %d Status: %d Creation: %d Termination: %d Burst: %d\n",perf->stime,perf->rutime,perf->retime,*stat, perf->ctime, perf->ttime, perf->average_bursttime);
+    } else{
+        for(int i=0;i<20;i++){
+            sleep(1);
         }
-        else{ //parent
-            wait(&status);
-            write(1, "parent\n", 7); //should be traced
-            open("/path", 0); //shouldn't be traced
-        }
-  }
-  else{ //child1
-    write(1, "child1\n", 7);  //should be traced
-    int pid3 = fork(); //shouldnt be traced
-    if (pid3 >0){ //child1
-      wait(&status);
-      kill(pid3);  //should be traced
+        mkdir("a");
+        mkdir("b");
+        mkdir("c");
+        mkdir("d");
+        mkdir("e");
+        mkdir("f");
+        // sleep(10);
     }
-  }
+    exit(0);
 
-  exit(0);
+//     int mask = 1<<6 | 1 <<16 | 1<<SYS_sbrk; //trace kill and write
+//     trace(mask, getpid());
+//     int pid = fork();
+//     int status;
+//     if (pid > 0){ //parent
+//         wait(&status);
+//         int pid2 = fork();
+//         if (pid2 == 0){ //child2
+//             trace(1<<6, getpid()); //trace kill
+//             int pid4 = fork();
+//             wait(&status);
+//             if (pid4 >0){ //child 2
+//                 sbrk(100);
+//                 kill(pid4); //should be traced
+//                 write(1, "child2\n", 7);  //shouldnt be traced
+//             }
+//         }
+//         else{ //parent
+//             wait(&status);
+//             write(1, "parent\n", 7); //should be traced
+//             open("/path", 0); //shouldn't be traced
+//         }
+//   }
+//   else{ //child1
+//     write(1, "child1\n", 7);  //should be traced
+//     int pid3 = fork(); //shouldnt be traced
+//     if (pid3 >0){ //child1
+//       wait(&status);
+//       kill(pid3);  //should be traced
+//     }
+//   }
+
+//   exit(0);
 
 }

@@ -107,8 +107,11 @@ struct proc {
   int runningTime;             // accumulator for RUNNING state time
   int runnableTime;            // accumulator for RUNNABLE state time
 
-  int priority;   
-  int decayfactor;
+
+  int priority;                // process priority  
+  int decayfactor;             // process decay factor
+  int queue_number;            // process number in queue
+
 
   // proc_tree_lock must be held when using this:
   struct proc *parent;         // Parent process

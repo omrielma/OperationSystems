@@ -110,6 +110,7 @@ int             trace(int mask, int pid);
 int             wait_stat(int* status, struct perf * performance);
 int             set_priority(int priority);
 void            DEFAULT_scheduler(struct cpu * c);
+void            FCFS_scheduler(struct cpu * c);
 void            SRT_scheduler(struct cpu * c);
 void            CFSD_scheduler(struct cpu * c);
 
