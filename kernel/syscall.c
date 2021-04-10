@@ -140,7 +140,7 @@ static uint64 (*syscalls[])(void) = {
 char* callsNames[] = {"", "fork", "exit", "wait", "pipe", "read", 
                     "kill", "exec", "fstat", "chdir", "dup", "getpid", 
                     "sbrk", "sleep", "uptime", "open", "write", 
-                    "mknod", "unlink", "link", "mkdir", "close", "trace"};
+                    "mknod", "unlink", "link", "mkdir", "close", "trace", "wait_stat", "set_priority"};
 
 void
 syscall(void)
