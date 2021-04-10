@@ -26,6 +26,7 @@ int sleep(int);
 int uptime(void);
 int trace(int mask,int pid); // new system call
 int wait_stat(int* status, struct perf * performance); // new system call
+int set_priority(int priority); // new system call
 
 // ulib.c
 int stat(const char*, struct stat*);

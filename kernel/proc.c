@@ -330,7 +330,7 @@ fork(void)
   np->sz = p->sz;
   // trace
   np->mask = p->mask; // Copy mask from parent to child
-  np->trace_flag = p->trace_flag;  // CHECK IF NEED TO COPY TRACE FLAG
+  //np->trace_flag = p->trace_flag;  // CHECK IF NEED TO COPY TRACE FLAG
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -424,7 +424,6 @@ exit(int status)
   p->xstate = status;
   p->state = ZOMBIE;
   p->ttime = ticks;
-  // p->average_bursttime = ALPHA*(ticks - p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
 
   release(&wait_lock);
 
@@ -757,7 +756,6 @@ yield(void)
   p->queue_number = queue_number_global;
   queue_number_global++;
   release(&queuelock);
-  // p->average_bursttime = ALPHA*(ticks - p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
   sched();
   release(&p->lock);
 }
@@ -805,7 +803,6 @@ sleep(void *chan, struct spinlock *lk)
   p->rutime += (ticks - p->runningTime);
   p->state = SLEEPING;
   p->sleepTime = ticks;
-  // p->average_bursttime = ALPHA*(ticks - p->runningTime) + ((100-ALPHA)*p->average_bursttime)/100;
 
   sched();
 
